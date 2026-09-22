@@ -1,0 +1,102 @@
+---
+title: "時間序列初步分析報告"
+author: "（分析者）"
+date: "`r Sys.Date()`"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    code-fold: false
+    fig-width: 7
+    fig-height: 4
+    fig-align: center
+execute:
+  echo: true
+  warning: false
+  message: false
+lang: zh-Hant
+---
+
+<!--
+  這是 timeseries-eda skill 的報告骨架。使用方式：
+  1. 依「開場提問」的結果，決定走傳統 (A) 或現代 (B) 路線，把不需要的路線區塊刪除。
+  2. 每個 {r} 區塊填入實際程式碼，讓圖與檢定在 `quarto render` 時真的重跑。
+  3. 每個步驟後面都要補「統計解讀 + 領域直覺」兩層說明（見各段的提示）。
+  4. 編譯：quarto render report.qmd  （或在 R 內 quarto::quarto_render("report.qmd")）
+-->
+
+```{r setup}
+#| include: false
+# 依實際路線載入套件：
+# 傳統 (A)：library(tseries); library(forecast); library(zoo); library(TSA)
+# 現代 (B)：library(fpp3)
+```
+
+# 分析取向與資料說明
+
+<!-- 說明：本次選擇 (A) 可解釋性/統計嚴謹 或 (B) 預測準確/pipeline 穩健，以及理由。 -->
+<!-- 資料來源、頻率、時間範圍、欄位、是否為股價（若是，改用對數報酬）。 -->
+
+# 資料健康檢查與結構確認
+
+```{r data-check}
+# 讀資料、確認頻率與規則間隔、找出並標記缺失/異常（先不要補）。
+# 提醒：不要對沒有缺失的資料硬做插補；先確認缺口是否真的存在。
+```
+
+**解讀：**
+<!-- 統計解讀 + 領域直覺 -->
+
+# 建立時間資料結構與（必要時）變異數穩定
+
+```{r structure}
+# 傳統：ts(...)；現代：as_tsibble(index = , key = )
+# 指數成長/乘法季節 → log 轉換；股價 → 對數報酬 diff(log(price))
+```
+
+**解讀：**
+
+# 視覺化探索
+
+```{r eda-plots}
+# 時間圖、季節圖、子序列圖、落後圖、ACF、箱形圖
+# 傳統：plot()/acf()/pacf()/TSA::eacf()
+# 現代：autoplot()/gg_season()/gg_subseries()/gg_lag()/ACF()
+```
+
+**解讀：**
+<!-- 趨勢？季節？循環？異常？ACF 的形狀說明什麼 -->
+
+# STL 分解與缺失值處理
+
+```{r decomposition}
+# STL 分解成 趨勢-循環 + 季節 + 殘差；此時才依路線補值並記錄方法。
+```
+
+**解讀：**
+
+# 平穩性與差分
+
+```{r stationarity}
+# 傳統：adf.test()（H0=非平穩，p 小→平穩），只用 ADF
+# 現代：features(., unitroot_kpss)（H0=平穩，p 小→需差分）+ unitroot_ndiffs()/nsdiffs()
+# 差分順序：先季節差分，再一階差分；避免過度差分。
+```
+
+**解讀：**
+<!-- 是否平穩？需要幾階差分？兩種檢定 H0 方向相反，若並列務必註明 -->
+
+# 結論與後續建議
+
+<!--
+  - 資料是否平穩、建議如何處理。
+  - 可否進入建模；若要建模：按時間順序切分、避免時間洩露，選能吃季節的模型。
+  - 交付乾淨資料與前處理紀錄。
+-->
+
+# 附錄：工作階段資訊
+
+```{r session-info}
+sessionInfo()
+```
