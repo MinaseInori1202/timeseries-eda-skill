@@ -1,0 +1,126 @@
+---
+title: "時間序列初步分析報告"
+author: "（分析者）"
+date: "`r Sys.Date()`"
+format:
+  html:
+    theme: cosmo                # 乾淨、學術友善的 Bootswatch 主題（litera / flatly 亦可）
+    embed-resources: true       # 產生「單一自足檔」：CSS/JS/圖片全內嵌，方便寄送/分享（字型仍需對方電腦有標楷體）
+    fontsize: 1.05rem           # 內文基準字級 ~17px（可讀性：16–18px）
+    linestretch: 1.7            # 標楷體較細，行高拉到 1.7 較好讀
+    # 中英文分開字型：英數→Times New Roman、中文→標楷體（瀏覽器逐字挑字型）
+    mainfont: "'Times New Roman', '標楷體', 'DFKai-SB', 'KaiTi', 'BiauKai', serif"
+    monofont: "'Source Code Pro', SFMono-Regular, Menlo, Consolas, monospace"
+    toc: true
+    toc-depth: 3
+    toc-location: left
+    number-sections: true
+    code-fold: false
+    code-block-bg: true
+    highlight-style: github
+    fig-width: 7
+    fig-height: 4.5
+    fig-align: center
+    fig-cap-location: bottom
+    tbl-cap-location: top
+    grid:
+      body-width: 900px         # 內文寬度，讓每行約 70–90 字、不會太寬難讀
+execute:
+  echo: true
+  warning: false
+  message: false
+lang: zh-Hant                   # 全英文報告改成 en
+---
+
+<!--
+  這是 timeseries-eda skill 的報告骨架。使用方式：
+  1. 依「開場提問」的結果，決定走傳統 (A) 或現代 (B) 路線，把不需要的路線區塊刪除。
+  2. 每個 {r} 區塊填入實際程式碼，讓圖與檢定在 `quarto render` 時真的重跑。
+  3. 每個步驟後面都要補「統計解讀 + 領域直覺」兩層說明（見各段的提示）。
+  4. 編譯：quarto render report.qmd  （或在 R 內 quarto::quarto_render("report.qmd")）
+-->
+
+```{r setup}
+#| include: false
+# 依實際路線載入套件：
+# 傳統 (A)：library(tseries); library(forecast); library(zoo); library(TSA)
+# 現代 (B)：library(fpp3)
+# 表格：library(flextable)；用 flextable(df) |> theme_booktabs() |> autofit() 出「三線表」（只有上/表頭/下三線、無直線），數值固定小數位
+```
+
+# 資料說明與分析方法
+
+<!--
+  以專業、客觀的口吻撰寫，不要出現 (A)/(B) 取向選單、不要提到「skill」或「因無法互動採預設」。
+  - 資料：來源、頻率、時間範圍、欄位；是否為股價（若是，改用對數報酬分析）。
+  - 方法取向：直接陳述本報告的目標與據此採用的方法。
+    例：「本分析以統計嚴謹與可解釋性為目標，平穩性採 ADF 單位根檢定，模型選擇以 BIC 為準。」
+-->
+
+
+# 資料健康檢查與結構確認
+
+```{r data-check}
+# 讀資料、確認頻率與規則間隔、找出並標記缺失/異常（先不要補）。
+# 提醒：不要對沒有缺失的資料硬做插補；先確認缺口是否真的存在。
+```
+
+**解讀：**
+<!-- 統計解讀 + 領域直覺 -->
+
+# 建立時間資料結構與（必要時）變異數穩定
+
+```{r structure}
+# 傳統：ts(...)；現代：as_tsibble(index = , key = )
+# 指數成長/乘法季節 → log 轉換；股價 → 對數報酬 diff(log(price))
+```
+
+**解讀：**
+
+# 視覺化探索
+
+```{r eda-plots}
+# 時間圖、季節圖、子序列圖、落後圖、ACF、箱形圖
+# 傳統：plot()/acf()/pacf()/TSA::eacf()
+# 現代：autoplot()/gg_season()/gg_subseries()/gg_lag()/ACF()
+# 敘述統計：一般序列 mean/sd/min/max（偏態/峰態留到平穩化後）
+# 股價/報酬：對報酬做「五數統計 fivenum() + 箱形圖」+ 六項摘要表 + ACF(報酬)/ACF(報酬^2)（缺一不可）
+```
+
+**解讀：**
+<!-- 趨勢？季節？循環？異常？ACF 的形狀說明什麼 -->
+
+# STL 分解與缺失值處理
+
+```{r decomposition}
+# STL 分解成 趨勢-循環 + 季節 + 殘差；此時才依路線補值並記錄方法。
+```
+
+**解讀：**
+
+# 平穩性與差分
+
+```{r stationarity}
+# 傳統：adf.test()（H0=非平穩，p 小→平穩），只用 ADF
+# 現代：features(., unitroot_kpss)（H0=平穩，p 小→需差分）+ unitroot_ndiffs()/nsdiffs()
+# 股價/報酬：轉對數報酬後一律仍要跑 ADF（把統計量與 p 值寫進報告），現代路線可再加 KPSS
+# 差分順序：先季節差分，再一階差分；避免過度差分。
+# 確認平穩後（ADF 之後）緊接著繪製 ACF 與 PACF 圖以識別 ARMA/SARIMA 階數（可再用 TSA::eacf()）。
+```
+
+**解讀：**
+<!-- 是否平穩？需要幾階差分？兩種檢定 H0 方向相反，若並列務必註明 -->
+
+# 結論與後續建議
+
+<!--
+  - 資料是否平穩、建議如何處理。
+  - 可否進入建模；若要建模：按時間順序切分、避免時間洩露，選能吃季節的模型。
+  - 交付乾淨資料與前處理紀錄。
+-->
+
+<!--
+  注意：預設「不要」加入 sessionInfo / 工作階段資訊附錄。
+  報告中如有中文，一律使用正體中文（繁體，Traditional）。
+-->
+

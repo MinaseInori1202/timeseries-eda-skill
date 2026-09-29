@@ -1,0 +1,33 @@
+{
+  "skill_name": "timeseries-eda",
+  "evals": [
+    {
+      "id": 0,
+      "name": "stock-price-log-return",
+      "prompt": "我有一份台積電近三年的每日收盤價 CSV，欄位是 date 和 close，幫我對這筆資料做時間序列的初步分析。",
+      "expected_output": "應先詢問分析取向（可解釋性 vs 預測準確度），並辨識出這是股價資料、主張先轉成對數報酬 log return（diff(log(close)))再分析，提到波動聚集可看報酬平方的 ACF。用 R。",
+      "files": []
+    },
+    {
+      "id": 1,
+      "name": "classical-interpretability-airpassengers",
+      "prompt": "這是 R 內建的 AirPassengers 資料（1949–1960 每月國際航空乘客數）。我要把結果寫進統計諮詢作業報告，需要嚴謹、能交代統計依據的分析。請幫我做時間序列的初步分析。",
+      "expected_output": "詢問取向後應走傳統統計路線（可解釋性）：辨識指數成長與乘法季節→建議 log 轉換；用 ADF 檢定平穩性（不用 KPSS）；ACF/PACF/EACF 識別結構；STL 分解；先季節差分再一階差分；每步都附統計解讀與領域直覺。用 R base graphics。",
+      "files": []
+    },
+    {
+      "id": 2,
+      "name": "modern-pipeline-hourly-traffic",
+      "prompt": "我有每小時的伺服器流量資料，之後會持續有新資料進來，我想建一個能自動重跑、可重現的預測流程。先幫我探索一下這筆時間序列資料。",
+      "expected_output": "詢問取向後應走現代 fpp3 路線（pipeline 穩健）：轉成 tsibble（index+key）；用 fill_gaps() 把隱含缺失顯性化（不要盲目插補）；autoplot/gg_season/gg_subseries/ACF 視覺化；STL 分解；用 KPSS + unitroot_ndiffs/nsdiffs 自動判定差分；提醒時間順序切分避免時間洩露。用 R tidyverts。",
+      "files": []
+    },
+    {
+      "id": 3,
+      "name": "tsay-jnj-classical-realdata",
+      "prompt": "這是 Tsay《Analysis of Financial Time Series》配套資料 q-jnj.txt（Johnson & Johnson 1960Q1–1980Q4 季度每股盈餘 EPS，共 84 筆）。資料網址：https://faculty.chicagobooth.edu/-/media/faculty/ruey-s-tsay/teaching/fts3/q-jnj.txt 我要寫成統計諮詢報告，需要嚴謹、能交代統計依據。請幫我做時間序列的初步分析。",
+      "expected_output": "走傳統統計路線：辨識指數成長與季節→log 轉換；ADF 判定非平穩（不用 KPSS）；先季節差分(lag=4)再一階差分 (d=1,D=1)；ACF/PACF/EACF 識別 SARIMA；每步附統計與商業直覺解讀。用 R。這是有已知正解的實資料（見使用者作業），適合驗證 skill。",
+      "files": []
+    }
+  ]
+}
