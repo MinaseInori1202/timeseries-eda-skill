@@ -56,7 +56,7 @@ forecast::auto.arima(y, d = 1, D = 1, ic = "bic",
 1. **視覺化**：畫**殘差平方**的 `ACF` 與 **`PACF`**——`acf(residuals(fit)^2)`、`pacf(residuals(fit)^2)`。
    有 ARCH 效應時，平方後自相關訊號會全部浮現；**殘差平方的 PACF 截斷位置可初判 ARCH 階數 m**。
 2. **正式檢定（Tsay 給兩種，可並用）**：
-   - **Ljung-Box Q(m) 檢殘差平方**：`Box.test(residuals(fit)^2, lag = 12, type = "Ljung")`。
+   - **Ljung-Box Q(m) 檢殘差平方**：`Box.test(residuals(fit)^2, lag = 12, type = "Ljung-Box")`。
    - **Engle 的 LM（Lagrange Multiplier）檢定**：`FinTS::ArchTest(residuals(fit), lags = 12, demean = FALSE)`
      （注意 `ArchTest` 作用在殘差本身、不是平方；`demean` 控制要不要先去均值）。
    兩者 **p < 0.05** 都代表有顯著 ARCH 效應。
@@ -87,6 +87,20 @@ spec <- ugarchspec(
 fit <- ugarchfit(spec, data = returns)  # 丟原始（報酬）序列，rugarch 自動處理均值/差分
 show(fit)
 ```
+
+4. **Tsay 式手動檢查（與 `show()` 並列，報告建議兩者都寫）**：對**標準化殘差 ã<sub>t</sub> 與 ã<sub>t</sub>²** 各檢 **m = 10 與 m = 20**
+   （ã<sub>t</sub> 檢均值方程、ã<sub>t</sub>² 檢波動度方程；依據與細節見 `ljung-box-lags.md`）：
+
+   ```r
+   z <- as.numeric(residuals(fit, standardize = TRUE))
+   for (m in c(10, 20)) {
+     q1 <- Box.test(z,   lag = m, type = "Ljung-Box")
+     q2 <- Box.test(z^2, lag = m, type = "Ljung-Box")
+     cat(sprintf("m = %2d | ã_t: Q = %.2f (p = %.3f) | ã_t^2: Q = %.2f (p = %.3f)\n",
+                 m, q1$statistic, q1$p.value, q2$statistic, q2$p.value))
+   }
+   ```
+   報告要寫 H₀（標準化殘差在 m 期內無自相關）、H₁、四個 Q 值與 p 值，並判讀：全部 p > 0.05 → 均值與波動度方程皆足夠。
 
 **當兩個加權 Ljung-Box 的 p 值都 > 0.05**：代表不論是漲跌趨勢（均值）或風險波動（變異數），
 都已被模型完整捕捉——分析才算真正完善。
@@ -188,7 +202,7 @@ cat("$$", extract_garch_eq(fit), "$$")
 且**偏預測準確度／pipeline 穩健 (B) 取向**。Prophet 是可加性模型（趨勢 + 季節 + 假日），
 對缺失與離群穩健、幾乎免手動定階、快速好上手，很適合零售銷量、網站流量等商業序列。
 
-**不那麼適合**：需要**統計推論／可解釋性 (A)**、要交代參數顯著性與檢定時——Prophet 偏曲線配適與預測，
+**不那麼適合**：需要**統計推論／模型的可解釋性 (A)**、要交代參數顯著性與檢定時——Prophet 偏曲線配適與預測，
 不提供 ARIMA 那種參數推論；這種情況仍以 ARIMA／SARIMA 為主。也因此，**波動度（ARCH/GARCH）不在 Prophet 範疇**，
 若同時關心風險波動，Prophet 顧均值、變異數仍需另接 GARCH 思路。
 

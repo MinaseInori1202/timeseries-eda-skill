@@ -5,7 +5,7 @@
       "id": 0,
       "name": "stock-price-log-return",
       "prompt": "我有一份台積電近三年的每日收盤價 CSV，欄位是 date 和 close，幫我對這筆資料做時間序列的初步分析。",
-      "expected_output": "應先詢問分析取向（可解釋性 vs 預測準確度），並辨識出這是股價資料、主張先轉成對數報酬 log return（diff(log(close)))再分析，提到波動聚集可看報酬平方的 ACF。用 R。",
+      "expected_output": "應先詢問分析取向（模型的可解釋性 vs 預測準確度），並辨識出這是股價資料、主張先轉成對數報酬 log return（diff(log(close)))再分析，提到波動聚集可看報酬平方的 ACF。用 R。",
       "files": []
     },
     {

@@ -118,6 +118,9 @@ tsbl <- tsbl |>
 - KPSS 的 `p` 值被截在 0.01–0.1 之間；`p < 0.05` 代表**拒絕平穩**、需要差分。
 - **順序**：先季節差分再一階差分——季節差分後有時就已平穩，不必再做一階。
 - **過度差分**會誘發實際不存在的假自相關，`unitroot_ndiffs()` 的建議就是用來避免差過頭。
+- **`unitroot_nsdiffs()` 預設不是單根檢定**：它的判準是 STL 季節強度（`feat_stl()` 的季節強度 < 0.64 才免差分）。
+  月、季資料若要以**季節單根檢定**佐證 D，另用 OCSB／HEGY（H₀：存在季節單根）：`forecast::nsdiffs(y, test = "ocsb")`、`uroot::hegy.test()`（需安裝 `uroot`，尚未實測）。
+  兩種結論不一致時都寫進報告並說明取捨；細節見 `classical-track.md`「季節單根檢定」。現代路線可再以 `unitroot_nsdiffs(..., unitroot_fn = ~ ...)` 換成自訂判準。
 
 ## 5. 變數轉換（Box–Cox / log）
 
@@ -133,6 +136,16 @@ tsbl |> autoplot(box_cox(value, lambda))
 > **先確認再轉換，別無腦套 Guerrero。** 當序列的**季節振幅其實很穩定、不隨水準放大**時，Guerrero 可能挑出
 > **貼著邊界的極端 λ（如 ≈ −0.9）**，套進模型反而會讓預測出現 `NA`／`NaNs produced`。動手前先**目視**：振幅有隨水準
 > 變大才轉；若沒有明顯的乘法型變異，就**不要轉換**（維持原尺度），並在報告說明理由。λ 靠近 0 用 `log` 較穩健。
+>
+> **「目視確認」要用這些程式碼，並附量化數字**：
+> ```r
+> tsbl |> autoplot(value)       # 時間圖：季節起伏的幅度是否隨整體水準放大（乘法型）、還是大致固定（加法型）
+> tsbl |> gg_season(value)      # 季節圖：各年曲線平行（加法型）或逐年張開（乘法型）
+> # 量化：逐年年內全距 vs 年平均水準（把 Quarter 換成你的時間欄；轉換前後各算一次）
+> tsbl |> as_tibble() |> mutate(yr = year(Quarter)) |> group_by(yr) |>
+>   summarise(range = diff(range(value)), mean = mean(value))
+> ```
+> 實測（`aus_production` 啤酒 1992–2010）：年內全距 122 → 90，年平均 451 → 430，**幅度沒有隨水準放大**，Guerrero 卻給出 λ = −0.900（貼著邊界）、套進模型後預測全為 `NA`——這種資料就不該轉換。報告要把圖與這組數字都放進去。
 
 ## 6. tidy forecasting workflow（fable 六步驟）
 
@@ -238,6 +251,72 @@ fit |> select(arima) |> forecast(h = 8, bootstrap = TRUE, times = 1000) |> hilo(
 > 再用第 8 節的測試集或 CV 之 RMSE 挑贏家（不能用 AICc 跨類別比）。
 > **Prophet**：fpp3 教科書本文未涵蓋；若要用需另引 `fable.prophet::prophet()`（見 `arima-garch-bridge.md`）。
 
+## 10. 有外生變數：動態迴歸（迴歸誤差項為 ARIMA，即 ARIMAX）
+
+依據 fpp3 第 10 章（*Dynamic regression models*）。**模型**：y<sub>t</sub> = β₀ + β₁x<sub>1,t</sub> + … + η<sub>t</sub>，η<sub>t</sub> 服從 ARIMA。
+和傳統路線第 7 節（Tsay Ch.2）是**同一個模型**，差別只在工具與自動化程度；β 的詮釋是「x 每增加 1 單位，y 的水準平均變動 β」
+（若 d ≥ 1，y 與 x 同時被差分，係數是**變動對變動**的效應）。
+
+fpp3 的流程對應 Tsay 三步驟如下：
+
+| Tsay 步驟 | fable 做法 |
+|---|---|
+| ① 先配適迴歸、檢查殘差序列相關 | `model(TSLM(y ~ x))` → `augment() \|> features(.innov, ljung_box, lag = 8)`；殘差是否單根用 `features(.innov, unitroot_kpss)` |
+| ② 單根？是 → y、x 一起差分；否 → 替殘差定 ARMA | **`ARIMA(y ~ x)` 不寫 `pdq()` 時自動處理**：KPSS 決定 d，有差分就**對所有變數（y 與 x）一起差分**，最後以原變數表示模型 |
+| ③ 聯合估計並檢查 | `ARIMA()` 本身即聯合最大概似；`gg_tsresiduals()`、`ljung_box`（`dof` 扣參數） |
+
+```r
+# ① 先配適迴歸，檢查殘差
+tsbl |> model(TSLM(y ~ x)) |> augment() |> features(.innov, ljung_box, lag = 8)   # p 小 → 有序列相關，OLS 標準誤不可信
+
+# ②③ 聯合估計：自動定階，或手動指定，再用 AICc 比較
+fit <- tsbl |> model(
+  auto = ARIMA(y ~ x),                                     # 自動：d 由 KPSS、(p,q) 由 AICc
+  man  = ARIMA(y ~ x + pdq(1, 0, 2) + PDQ(0, 0, 0))        # 手動：階數來自 ACF/PACF
+)
+glance(fit) |> select(.model, AIC, AICc, BIC)
+fit |> select(auto) |> report()                            # 係數表（含 x 的估計值與標準誤）
+tidy(fit)                                                  # 含 z／p 值
+
+# 診斷：殘差要用「innovation residual」，ε_t 才是應為白噪音的那個
+fit |> select(auto) |> gg_tsresiduals()
+k <- tidy(fit |> select(auto)) |> filter(grepl("^(ar|ma)[0-9]", term)) |> nrow()   # AR+MA 參數個數（不含迴歸係數）
+augment(fit |> select(auto)) |> features(.innov, ljung_box, dof = k, lag = 8)
+```
+
+- **兩種殘差別搞混**：`.innov`（ARIMA 的 ε<sub>t</sub>，要拿來檢查白噪音）與迴歸殘差 η<sub>t</sub>（`residuals(fit, type = "regression")`，包含 ARIMA 結構、不必是白噪音）。診斷看 `.innov`。
+- **選預測變數**：對要考慮的每個 x 子集各配一次，**以 AICc 最小者為準**（fpp3 的做法）；比較時各模型須用同一段資料。
+- **不要用 `ARIMA()` 的自動結果就算完**：仍要看 `gg_tsresiduals()`／Ljung–Box，再做 SKILL.md 的**兩層殘差診斷**（ARCH）。
+
+### 預測需要未來的 x
+
+```r
+fut <- new_data(tsbl, 8) |> mutate(x = mean(tsbl$x))        # 情境假設：維持歷史平均；也可填已知排程或 x 自己的預測
+fc  <- fit |> select(auto) |> forecast(new_data = fut)
+fc |> autoplot(tsbl) + ggplot2::labs(title = "預測：點估計與 80%/95% 預測區間")
+```
+
+**務必在報告說明 x 未來值的來源**（情境假設／已知排程／另行預測）。預測區間只反映 y 這一側的不確定性，
+**不含 x 預測本身的誤差**，要註明；`fut` 若漏掉任何用到的 x 欄位，`forecast()` 會報錯。
+
+### 落後預測變數（x 的影響有時間延遲）
+
+廣告對詢價量、降雨對流量這類**有延遲的因果**，把 x 的落後項放進模型，再用 AICc 選落後期數：
+
+```r
+fit_l <- insurance |>
+  mutate(Quotes = c(NA, NA, NA, Quotes[4:40])) |>           # 把前 3 期設 NA，讓各落後模型用同一段資料比較
+  model(lag0 = ARIMA(Quotes ~ pdq(d = 0) + TVadverts),
+        lag1 = ARIMA(Quotes ~ pdq(d = 0) + TVadverts + lag(TVadverts)),
+        lag2 = ARIMA(Quotes ~ pdq(d = 0) + TVadverts + lag(TVadverts) + lag(TVadverts, 2)))
+glance(fit_l)                                              # AICc 最小者（此例為 lag1）
+```
+
+> **和傳統路線的取捨**：fable 把 ①② 自動化，但自動 KPSS 差分**沒有**傳統路線警告的兩個陷阱——
+> OLS 殘差單根判斷的臨界值問題、以及「假性迴歸」的明確檢定（共整合）。若 y、x 都明顯不平穩，
+> 想確認兩者有無長期均衡關係，改走傳統路線第 7 節的 `po.test()`／Johansen 檢定；
+> 若只為預測，則讓 `ARIMA(y ~ x)` 自動差分即可。
+
 ## 與傳統路線的對照（寫進報告時提醒讀者）
 
 | 面向 | 現代 fpp3 | 傳統統計 |
@@ -249,3 +328,4 @@ fit |> select(arima) |> forecast(h = 8, bootstrap = TRUE, times = 1000) |> hilo(
 | 分解 | STL（穩健、季節可演化） | 傳統移動平均分解 / X-11 |
 | 建模／選模 | `model()` 多模型（ETS/ARIMA/SNAIVE）並列，`accuracy()`/CV 挑贏家 | 逐一配 `Arima()`/`auto.arima()`，AIC/BIC + 殘差診斷 |
 | 預測區間 | `forecast()` + `autoplot()`（自動反轉換） | `forecast()`/`predict()` + 手動 ±1.96·SE |
+| 外生變數（ARIMAX） | `ARIMA(y ~ x)`，KPSS 自動決定 d、y 與 x 一起差分，AICc 選預測變數 | Tsay 三步驟：`lm` → `dwtest`/`bgtest`/`po.test` → `Arima(xreg=)` 聯合 MLE |

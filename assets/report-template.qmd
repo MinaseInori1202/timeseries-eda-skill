@@ -26,10 +26,14 @@ format:
     grid:
       body-width: 900px         # 內文寬度，讓每行約 70–90 字、不會太寬難讀
 execute:
-  echo: true
+  echo: false                   # 預設不顯示程式碼（程式仍在 .qmd 內可重跑）；需要含程式碼版本時，用 quarto render report.qmd -M echo:true -o report-with-code.html
   warning: false
   message: false
-lang: zh-Hant                   # 全英文報告改成 en
+lang: zh-TW                     # 繁體中文介面字串（Quarto 的 zh-Hant 會輸出簡體「目录」）；全英文報告改成 en
+crossref:
+  title-delim: "｜"              # 圖表編號與標題的分隔符號（預設為冒號）
+language:
+  title-block-published: "發布於"   # zh-TW 預設為「發佈於」，改成「發布於」
 ---
 
 <!--
@@ -45,55 +49,95 @@ lang: zh-Hant                   # 全英文報告改成 en
 # 依實際路線載入套件：
 # 傳統 (A)：library(tseries); library(forecast); library(zoo); library(TSA)
 # 現代 (B)：library(fpp3)
-# 表格：library(flextable)；用 flextable(df) |> theme_booktabs() |> autofit() 出「三線表」（只有上/表頭/下三線、無直線），數值固定小數位
+# 表格：用 flextable(df) |> theme_booktabs() |> ft_fit(df) 出「三線表」（只有上/表頭/下三線、無直線），數值固定小數位（ft_fit 見下）
+library(flextable)
+set_flextable_defaults(font.family = "Times New Roman", font.size = 11)
+
+# 表格欄寬：依各欄最長內容（中文字算 2 個寬度單位）設定，有空間就不換行；過長的欄位上限為 max_in 吋。
+# 用法：flextable(df) |> theme_booktabs() |> ft_fit(df)
+# （autofit() 在瀏覽器以中文字型顯示時會低估寬度、讓「目標變數」這類短標籤被截成兩行，故改用此函式。）
+ft_fit <- function(ft, df, max_in = 3.6) {
+  w <- vapply(seq_along(df), function(j) {
+    cells <- c(names(df)[j], trimws(format(df[[j]], digits = 6)))
+    min(max(nchar(cells, type = "width"), na.rm = TRUE) * 0.095 + 0.3, max_in)
+  }, numeric(1))
+  ft |> set_table_properties(layout = "fixed") |> width(j = seq_along(w), width = w)
+}
 ```
 
 # 資料說明與分析方法
 
 <!--
-  以專業、客觀的口吻撰寫，不要出現 (A)/(B) 取向選單、不要提到「skill」或「因無法互動採預設」。
-  - 資料：來源、頻率、時間範圍、欄位；是否為股價（若是，改用對數報酬分析）。
-  - 方法取向：直接陳述本報告的目標與據此採用的方法。
-    例：「本分析以統計嚴謹與可解釋性為目標，平穩性採 ADF 單位根檢定，模型選擇以 BIC 為準。」
+  以專業、客觀的第三人稱撰寫，不要出現 (A)/(B) 取向選單、不要提到「skill」或「因無法互動採預設」。
+  本章只寫「計畫採用的分析架構與決策規則」，不寫分析結果（結果留給各結果章節）：
+  - 資料：來源、頻率、時間範圍、樣本數；資料的實質特徵與本分析的研究目的。
+    不要稱它為「經典教學序列」「適合作為教學範例」，不要寫「以便讀者／審稿人複核」。
+  - 分析架構（規劃語氣）：預計進行的步驟、各檢定的 H₀ 與判定準則、選模準則。
+    例：「將以 ADF 檢定判定非季節單根（H₀：存在單位根），並以季節單根檢定（Seasonal Unit Root Test）判定季節單根；
+        模型比較以 BIC 為主要準則。」
+  - 不要在此下結論，如「不做對數轉換」「差分取 d = 1、D = 1」「採 SARIMA(…)」；
+    這些是檢驗後的結果，放到對應章節。
 -->
 
 
 # 資料健康檢查與結構確認
 
 ```{r data-check}
-# 讀資料、確認頻率與規則間隔、找出並標記缺失/異常（先不要補）。
-# 提醒：不要對沒有缺失的資料硬做插補；先確認缺口是否真的存在。
+# 讀資料、建立 ts／tsibble、確認頻率與規則間隔。
+# 表 1（資料結構表，可與表 2 用 :::: {.columns} 左右並列）必須含：目標變數名稱與定義、度量單位、觀測筆數、頻率、起訖時間、缺失值個數、非正值（≤ 0）個數。
+# 表 2（摘要統計）必須含：筆數（整數顯示）、平均數、標準差、最小值、Q1、中位數、Q3、最大值（註明單位）。
+# 數值合理性：符號與範圍、最大單月相對變動、單位一致；不要在此引用後面才產生的 STL 殘差（異常值統計檢驗放在 STL 分解章）。
+# 若 min ≤ 0，不可直接取對數，須說明處理方式（平移、Box–Cox 不適用等）。
 ```
 
 **解讀：**
-<!-- 統計解讀 + 領域直覺 -->
-
-# 建立時間資料結構與（必要時）變異數穩定
-
-```{r structure}
-# 傳統：ts(...)；現代：as_tsibble(index = , key = )
-# 指數成長/乘法季節 → log 轉換；股價 → 對數報酬 diff(log(price))
-```
-
-**解讀：**
+<!-- 只陳述事實與判讀，如「無缺失值，故不需插補」「所有觀測值均大於 0，符合取對數前提」。
+     不要為「沒做的事」辯護或說教（如「硬做插補只會掩蓋檢查」）。 -->
 
 # 視覺化探索
 
+<!-- 順序：先看「原始尺度」的圖，再決定是否轉換；不可先轉換再探索。 -->
+
 ```{r eda-plots}
-# 時間圖、季節圖、子序列圖、落後圖、ACF、箱形圖
-# 傳統：plot()/acf()/pacf()/TSA::eacf()
-# 現代：autoplot()/gg_season()/gg_subseries()/gg_lag()/ACF()
-# 敘述統計：一般序列 mean/sd/min/max（偏態/峰態留到平穩化後）
+# 原始尺度：時間圖、季節圖、子序列圖
+# 傳統：plot()、forecast::ggseasonplot(y, continuous = TRUE)（彩虹色階圖例標示年份，見 SKILL.md）、forecast::ggsubseriesplot(y)；現代：autoplot()/gg_season()/gg_subseries()
+# 觀察：趨勢、季節型態、變異數是否隨水準放大（作為下一章是否轉換的依據）
+```
+
+**解讀：**
+<!-- 趨勢？季節？循環？變異數是否隨水準變化？ -->
+
+# 變異數穩定（必要時）
+
+```{r structure}
+# 只有視覺化與量化證據顯示變異數隨水準放大時才轉換：
+#   量化例：逐年年內全距（或標準差）相對於年平均水準的放大倍數，轉換前後各算一次。
+# 指數成長/乘法季節 → log 轉換；股價 → 對數報酬 diff(log(price))
+# 轉換前後各算一次年內全距，並畫轉換前後對照圖（異常值檢查留到 STL 分解章）。
+```
+
+**解讀：**
+<!-- 引用上一章的圖與量化數字作為依據，再說明轉換方式 -->
+
+# 轉換後序列的自相關結構與分布
+
+```{r eda-acf}
+# 落後圖、ACF、箱形圖（在轉換後的尺度上）
+# 傳統：acf()/TSA::eacf()；現代：gg_lag()/ACF()
+# 敘述統計表：一般序列 mean/sd/min/max（偏態/峰態留到平穩化後）
 # 股價/報酬：對報酬做「五數統計 fivenum() + 箱形圖」+ 六項摘要表 + ACF(報酬)/ACF(報酬^2)（缺一不可）
 ```
 
 **解讀：**
-<!-- 趨勢？季節？循環？異常？ACF 的形狀說明什麼 -->
+<!-- ACF 的形狀說明什麼 -->
 
-# STL 分解與缺失值處理
+# STL 分解
+
+<!-- 章名不含「缺失值處理」。只有資料確實有缺失時，才另加「缺失值處理」小節並記錄方法；
+     沒有缺失就在資料健康檢查寫一句「無缺失值，不需插補」，此處不再提。 -->
 
 ```{r decomposition}
-# STL 分解成 趨勢-循環 + 季節 + 殘差；此時才依路線補值並記錄方法。
+# STL 分解成 趨勢-循環 + 季節 + 殘差；接著對殘差套用 Tukey 準則（1.5×IQR）做異常值檢查（# 異常值檢查 小節），記錄筆數、偏離幅度與處置。
 ```
 
 **解讀：**
@@ -104,6 +148,9 @@ lang: zh-Hant                   # 全英文報告改成 en
 # 傳統：adf.test()（H0=非平穩，p 小→平穩），只用 ADF
 # 現代：features(., unitroot_kpss)（H0=平穩，p 小→需差分）+ unitroot_ndiffs()/nsdiffs()
 # 股價/報酬：轉對數報酬後一律仍要跑 ADF（把統計量與 p 值寫進報告），現代路線可再加 KPSS
+# 有季節性（月、季…）：另做季節單根檢定決定 D——OCSB（nsdiffs(y, test = "ocsb")）與 HEGY（uroot::hegy.test），
+#   H0 皆為「存在季節單根」；nsdiffs()/unitroot_nsdiffs() 預設是季節強度閾值、不是單根檢定。
+#   結論與季節強度不一致時全部寫進報告並說明取捨依據。
 # 差分順序：先季節差分，再一階差分；避免過度差分。
 # 確認平穩後（ADF 之後）緊接著繪製 ACF 與 PACF 圖以識別 ARMA/SARIMA 階數（可再用 TSA::eacf()）。
 ```
